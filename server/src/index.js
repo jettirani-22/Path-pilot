@@ -151,7 +151,7 @@ app.use((error, req, res, next) => {
 try {
     await initializeDatabase();
 
-    app.listen(PORT, () => {
+    app.listen(PORT, "0.0.0.0", () => {
         console.log("");
         console.log("====================================");
         console.log("PathPilot Server Started");
