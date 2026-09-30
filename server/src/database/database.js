@@ -132,14 +132,23 @@ async function initializeDatabase() {
 
     sqliteDb.run("PRAGMA foreign_keys = ON;");
 
-    const schema = fs.readFileSync(sqliteSchemaPath, "utf8");
-    sqliteDb.run(schema);
-
-    // Auto-migrate any missing columns for SQLite
+    // Auto-migrate any missing columns for existing SQLite tables before applying indexes
     try { sqliteDb.run("ALTER TABLE questions ADD COLUMN test_cases TEXT;"); } catch (_) {}
     try { sqliteDb.run("ALTER TABLE questions ADD COLUMN starter_code TEXT;"); } catch (_) {}
     try { sqliteDb.run("ALTER TABLE questions ADD COLUMN expected_output TEXT;"); } catch (_) {}
     try { sqliteDb.run("ALTER TABLE questions ADD COLUMN code_language TEXT;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE questions ADD COLUMN task_number INTEGER DEFAULT 1;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE questions ADD COLUMN topic TEXT DEFAULT 'General';"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN task_number INTEGER DEFAULT 1;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN is_cancelled INTEGER DEFAULT 0;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN cancellation_reason TEXT;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN violation_count INTEGER DEFAULT 0;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN camera_verified INTEGER DEFAULT 0;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE test_attempts ADD COLUMN assigned_questions TEXT;"); } catch (_) {}
+    try { sqliteDb.run("ALTER TABLE attempt_answers ADD COLUMN task_number INTEGER;"); } catch (_) {}
+
+    const schema = fs.readFileSync(sqliteSchemaPath, "utf8");
+    sqliteDb.run(schema);
 
     currentDbEngine = "sqlite";
 

@@ -56,3 +56,27 @@ export function authenticateToken(req, res, next) {
         });
     }
 }
+
+export function optionalAuth(req, res, next) {
+    try {
+        const authHeader = req.headers.authorization;
+        if (authHeader) {
+            const parts = authHeader.trim().split(/\s+/);
+            if (parts.length === 2 && parts[0] === "Bearer") {
+                const decoded = jwt.verify(parts[1], getJwtSecret());
+                req.user = decoded;
+            }
+        }
+    } catch (_) {}
+    next();
+}
+
+export function requireAdmin(req, res, next) {
+    if (!req.user || req.user.role !== "admin") {
+        return res.status(403).json({
+            success: false,
+            message: "Admin access required"
+        });
+    }
+    next();
+}

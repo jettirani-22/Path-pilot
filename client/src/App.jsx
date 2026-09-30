@@ -37,7 +37,13 @@ import {
   FileText,
   Play,
   Terminal,
-  RotateCcw
+  RotateCcw,
+  Lock,
+  Unlock,
+  Video,
+  VideoOff,
+  ShieldAlert,
+  Eye
 } from "lucide-react";
 import {
   Link,
@@ -48,6 +54,13 @@ import {
   useParams,
 } from "react-router-dom";
 import { LoginPage, SignupPage } from "./pages/auth.jsx";
+import CameraModal from "./components/CameraModal.jsx";
+import ExamSecurityBar from "./components/ExamSecurityBar.jsx";
+import TaskStepper from "./components/TaskStepper.jsx";
+import LearningVideo from "./components/LearningVideo.jsx";
+import AdminDashboard from "./pages/AdminDashboard.jsx";
+import SimulationLab from "./pages/SimulationLab.jsx";
+import StudentDashboard from "./pages/StudentDashboard.jsx";
 
 /* =========================================================
    8 CAREERS WITH 24 COMPLETELY SEPARATE QUESTIONS (3 PER CAREER)
@@ -833,9 +846,9 @@ function App() {
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem("pathpilot_user");
-      return saved ? JSON.parse(saved) : { name: "Rani", email: "rani@student.pathpilot.org", role: "student" };
+      return saved ? JSON.parse(saved) : null;
     } catch {
-      return { name: "Rani", email: "rani@student.pathpilot.org", role: "student" };
+      return null;
     }
   });
 
@@ -874,10 +887,11 @@ function App() {
           <Route path="/careers" element={<CareerExplorer showToast={showToast} />} />
           <Route path="/careers/:id" element={<CareerDetails showToast={showToast} />} />
           <Route path="/simulation" element={<SimulationSelector />} />
-          <Route path="/simulation/:id" element={<Simulation showToast={showToast} />} />
+          <Route path="/simulation/:id" element={<SimulationLab currentUser={currentUser} showToast={showToast} careers={careers} DIFFICULTY_LEVELS={DIFFICULTY_LEVELS} />} />
           <Route path="/report" element={<PerformanceReport showToast={showToast} />} />
           <Route path="/fit-insights" element={<CareerFit showToast={showToast} />} />
-          <Route path="/dashboard" element={<Dashboard currentUser={currentUser} showToast={showToast} />} />
+          <Route path="/dashboard" element={<StudentDashboard currentUser={currentUser} showToast={showToast} />} />
+          <Route path="/admin" element={<AdminDashboard currentUser={currentUser} showToast={showToast} />} />
           <Route path="/resources" element={<Resources showToast={showToast} />} />
           <Route path="/login" element={<LoginPage onLogin={handleLogin} />} />
           <Route path="/signup" element={<SignupPage onLogin={handleLogin} />} />
@@ -971,6 +985,7 @@ function Layout({ children, currentUser, onLogout, showToast }) {
     { path: "/report", label: "Performance Report", icon: BookOpen },
     { path: "/fit-insights", label: "Fit Insights", icon: Target },
     { path: "/resources", label: "Resources & Guides", icon: FileText },
+    ...(currentUser?.role === "admin" ? [{ path: "/admin", label: "Admin Lab", icon: Shield }] : [])
   ];
 
   const userInitial = currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "G";
@@ -2754,12 +2769,14 @@ function CareerFit({ showToast }) {
           </div>
         </div>
 
-        <div className="fit-disclaimer">
-          <Sparkles size={17} />
-          <span>
-            PathPilot fit signals reflect scenario performance patterns across your
-            completed challenges. Use this to guide self-directed learning.
-          </span>
+        <div className="fit-disclaimer" style={{ background: "#fffbeb", border: "1px solid #fef08a", color: "#854d0e", padding: "12px 16px", borderRadius: "10px", marginTop: "20px", display: "flex", alignItems: "center", gap: "10px", fontSize: "13px" }}>
+          <Sparkles size={18} style={{ color: "#eab308", flexShrink: 0 }} />
+          <div>
+            <strong>Demo Career-Fit Insight — Not a professional assessment</strong>
+            <div style={{ marginTop: 2, fontSize: 12, color: "#a16207" }}>
+              PathPilot fit signals reflect diagnostic performance patterns across your completed simulation challenges to guide self-directed learning.
+            </div>
+          </div>
         </div>
       </div>
 

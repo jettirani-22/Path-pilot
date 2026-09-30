@@ -1,3 +1,5 @@
+import { generateTasksForCourse, generateQuestionsForTask } from "./taskCatalog.js";
+
 export async function seedDatabaseIfEmpty(engine, queryOneFn, executeFn) {
     try {
         console.log(`🌱 Checking & Seeding PathPilot ${engine} database with 4 difficulty levels, 32 scenario simulations, and 20 live coding challenges...`);
@@ -737,7 +739,107 @@ export async function seedDatabaseIfEmpty(engine, queryOneFn, executeFn) {
             }
         }
 
-        console.log(`✅ PathPilot ${engine} database ready: 4 difficulty levels, scenario tests, and coding challenges seeded!`);
+        // =========================================================================
+        // 5. SYSTEM SETTINGS
+        // =========================================================================
+        const defaultSettings = [
+            ["max_violations_allowed", "3", "Maximum security violations before test auto-cancellation"],
+            ["passing_percentage", "60", "Passing score percentage required to complete level"],
+            ["camera_required_levels", "3,4", "Difficulty level IDs requiring camera verification (Hard, Expert)"]
+        ];
+
+        for (const [key, val, desc] of defaultSettings) {
+            await executeFn(
+                engine === "postgres"
+                    ? "INSERT INTO system_settings (key, value, description) VALUES (?, ?, ?) ON CONFLICT (key) DO NOTHING"
+                    : "INSERT OR IGNORE INTO system_settings (key, value, description) VALUES (?, ?, ?)",
+                [key, val, desc]
+            );
+        }
+
+        // =========================================================================
+        // 6. MULTI-LEVEL TASKS & QUESTIONS (10 Beginner, 16 Intermediate, 20 Hard, 26 Expert)
+        // =========================================================================
+        const coreCourses = [
+            { id: 1, name: "Software Developer", requiresCoding: 1 },
+            { id: 2, name: "Data Analyst", requiresCoding: 1 },
+            { id: 3, name: "UI/UX Designer", requiresCoding: 0 },
+            { id: 4, name: "Digital Marketer", requiresCoding: 0 }
+        ];
+
+        const existingTaskCount = await queryOneFn("SELECT COUNT(*) as c FROM tasks");
+        if (Number(existingTaskCount?.c) < 288) {
+            for (const c of coreCourses) {
+                const courseTasks = generateTasksForCourse(c.id, c.name, c.requiresCoding);
+            for (const t of courseTasks) {
+                // Upsert task
+                await executeFn(
+                    engine === "postgres"
+                        ? `INSERT INTO tasks 
+                           (course_id, difficulty_id, task_number, title, topic, task_type, description, instructions, video_url, marks, starter_code, test_cases, code_language, passing_score)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                           ON CONFLICT (course_id, difficulty_id, task_number) 
+                           DO UPDATE SET title = EXCLUDED.title, topic = EXCLUDED.topic, task_type = EXCLUDED.task_type, description = EXCLUDED.description, instructions = EXCLUDED.instructions, video_url = EXCLUDED.video_url, marks = EXCLUDED.marks, starter_code = EXCLUDED.starter_code, test_cases = EXCLUDED.test_cases, code_language = EXCLUDED.code_language, passing_score = EXCLUDED.passing_score`
+                        : `INSERT OR REPLACE INTO tasks 
+                           (course_id, difficulty_id, task_number, title, topic, task_type, description, instructions, video_url, marks, starter_code, test_cases, code_language, passing_score)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        t.course_id,
+                        t.difficulty_id,
+                        t.task_number,
+                        t.title,
+                        t.topic,
+                        t.task_type,
+                        t.description,
+                        t.instructions,
+                        t.video_url,
+                        t.marks,
+                        t.starter_code,
+                        t.test_cases,
+                        t.code_language,
+                        t.passing_score
+                    ]
+                );
+
+                // Insert questions for this task
+                const taskQuestions = generateQuestionsForTask(t);
+                for (const q of taskQuestions) {
+                    const existingQ = await queryOneFn(
+                        "SELECT id FROM questions WHERE course_id = ? AND difficulty_id = ? AND task_number = ? AND question = ?",
+                        [q.course_id, q.difficulty_id, q.task_number, q.question]
+                    );
+
+                    if (!existingQ) {
+                        await executeFn(
+                            `INSERT INTO questions
+                             (course_id, difficulty_id, task_number, topic, question, option_a, option_b, option_c, option_d, correct_answer, explanation, marks, question_type, code_language, starter_code, test_cases)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                            [
+                                q.course_id,
+                                q.difficulty_id,
+                                q.task_number,
+                                q.topic,
+                                q.question,
+                                q.option_a || "",
+                                q.option_b || "",
+                                q.option_c || "",
+                                q.option_d || "",
+                                q.correct_answer,
+                                q.explanation || "",
+                                q.marks || 5,
+                                q.question_type || "mcq",
+                                q.code_language || null,
+                                q.starter_code || null,
+                                q.test_cases || null
+                            ]
+                        );
+                    }
+                }
+            }
+        }
+        }
+
+        console.log(`✅ PathPilot ${engine} database ready: 4 difficulty levels, 288 progressive tasks, and randomized question bank seeded!`);
 
     } catch (error) {
         console.error("Database seeding error:", error);
