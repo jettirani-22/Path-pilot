@@ -11,7 +11,7 @@ import {
     UserRound
 } from "lucide-react";
 
-const API_BASE = window.location.port === "5173" ? "/api" : (window.location.origin.includes("5000") ? "/api" : "http://localhost:5000/api");
+const API_BASE = "/api";
 
 async function apiRequest(endpoint, options = {}) {
     const response = await fetch(`${API_BASE}${endpoint}`, {

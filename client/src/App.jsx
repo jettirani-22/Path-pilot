@@ -1913,11 +1913,15 @@ function Simulation({ showToast }) {
 
     // Send attempt to server API with difficultyId
     try {
+      const token = localStorage.getItem("pathpilot_token");
       fetch("/api/tests/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          userId: 1,
+          userId: currentUser?.id || null,
           courseId,
           difficultyId: selectedDifficulty,
           answers: [
@@ -2002,11 +2006,15 @@ function Simulation({ showToast }) {
     } catch {}
 
     try {
+      const token = localStorage.getItem("pathpilot_token");
       fetch("/api/tests/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
         body: JSON.stringify({
-          userId: 1,
+          userId: currentUser?.id || null,
           courseId,
           difficultyId: selectedDifficulty,
           answers: [],

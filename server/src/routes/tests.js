@@ -1,18 +1,49 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import { queryAll, queryOne, execute } from "../database/database.js";
 
 const router = express.Router();
 
+function getJwtSecret() {
+    return process.env.JWT_SECRET?.trim() || "pathpilot-development-secret-change-this";
+}
+
 // POST /api/tests/submit - Submit simulation attempt and evaluate
 router.post("/submit", async (req, res) => {
     try {
-        const { userId = 1, courseId, difficultyId = 1, answers = [] } = req.body;
+        const { courseId, difficultyId = 1, answers = [] } = req.body;
 
         if (!courseId) {
             return res.status(400).json({
                 success: false,
                 message: "Course ID is required"
             });
+        }
+
+        // 1. Resolve user ID: Check Bearer token first, then validate body.userId against database
+        let validUserId = null;
+        const authHeader = req.headers.authorization;
+        if (authHeader && authHeader.startsWith("Bearer ")) {
+            try {
+                const token = authHeader.split(" ")[1];
+                const decoded = jwt.verify(token, getJwtSecret());
+                if (decoded && decoded.id) {
+                    const authUser = await queryOne("SELECT id FROM users WHERE id = ? LIMIT 1", [Number(decoded.id)]);
+                    if (authUser) {
+                        validUserId = authUser.id;
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (!validUserId && req.body.userId) {
+            const requestedId = Number(req.body.userId);
+            if (Number.isInteger(requestedId) && requestedId > 0) {
+                const existingUser = await queryOne("SELECT id FROM users WHERE id = ? LIMIT 1", [requestedId]);
+                if (existingUser) {
+                    validUserId = existingUser.id;
+                }
+            }
         }
 
         const course = await queryOne("SELECT * FROM courses WHERE id = ?", [courseId]);
@@ -72,32 +103,67 @@ router.post("/submit", async (req, res) => {
         const accuracy = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
         const percentageScore = totalMarks > 0 ? Math.round((score / totalMarks) * 100) : 0;
 
-        // Insert into test_attempts
-        const attemptInsert = await execute(
-            `INSERT INTO test_attempts
-            (user_id, course_id, difficulty_id, score, total_marks, correct_answers, wrong_answers, accuracy, completed_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            RETURNING id`,
-            [userId, courseId, Number(difficultyId) || 1, percentageScore, totalMarks || 100, correctCount, wrongCount, accuracy]
-        );
+        let attemptId = null;
 
-        let attemptId = attemptInsert.rows?.[0]?.id;
-        if (!attemptId) {
-            const last = await queryOne("SELECT last_insert_rowid() as id");
-            attemptId = last ? last.id : 1;
-        }
-
-        // Insert into attempt_answers
-        for (const item of evaluationDetails) {
-            await execute(
-                `INSERT INTO attempt_answers
-                (attempt_id, question_id, selected_answer, correct, marks_awarded)
-                VALUES (?, ?, ?, ?, ?)`,
-                [attemptId, item.questionId, item.selectedAnswer || "", item.isCorrect ? 1 : 0, item.isCorrect ? 1 : 0]
+        // Persist attempt records if student is registered/authenticated
+        if (validUserId) {
+            const attemptInsert = await execute(
+                `INSERT INTO test_attempts
+                (user_id, course_id, difficulty_id, score, total_marks, correct_answers, wrong_answers, accuracy, completed_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                RETURNING id`,
+                [validUserId, courseId, Number(difficultyId) || 1, percentageScore, totalMarks || 100, correctCount, wrongCount, accuracy]
             );
+
+            attemptId = attemptInsert.rows?.[0]?.id;
+            if (!attemptId) {
+                const last = await queryOne("SELECT last_insert_rowid() as id");
+                attemptId = last ? last.id : null;
+            }
+
+            if (attemptId) {
+                for (const item of evaluationDetails) {
+                    await execute(
+                        `INSERT INTO attempt_answers
+                        (attempt_id, question_id, selected_answer, correct, marks_awarded)
+                        VALUES (?, ?, ?, ?, ?)`,
+                        [attemptId, item.questionId, item.selectedAnswer || "", item.isCorrect ? 1 : 0, item.isCorrect ? 1 : 0]
+                    );
+                }
+
+                // Derive Strengths and Areas of Improvement
+                const strengths = percentageScore >= 70
+                    ? ["Structured technical reasoning across multi-step scenarios", "Attention to system context and assumptions", "Logical decision making"]
+                    : ["Engagement with scenario", "Willingness to explore unfamiliar domains"];
+
+                const areasToImprove = percentageScore >= 70
+                    ? ["Refining deep domain heuristics", "Practicing edge-case handling in distributed environments"]
+                    : ["Deepening core fundamentals", "Validating system assumptions before acting", "Reviewing domain terminology"];
+
+                const recommendedSkills = [
+                    "Analytical Thinking",
+                    "Technical Problem Solving",
+                    "Industry Best Practices",
+                    `${course.name} Core Tooling`
+                ];
+
+                await execute(
+                    `INSERT INTO career_fit_results
+                    (user_id, attempt_id, career_name, fit_percentage, strengths, areas_to_improve, recommended_skills)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                    [
+                        validUserId,
+                        attemptId,
+                        course.name,
+                        percentageScore,
+                        JSON.stringify(strengths),
+                        JSON.stringify(areasToImprove),
+                        JSON.stringify(recommendedSkills)
+                    ]
+                );
+            }
         }
 
-        // Derive Strengths and Areas of Improvement
         const strengths = percentageScore >= 70
             ? ["Structured technical reasoning across multi-step scenarios", "Attention to system context and assumptions", "Logical decision making"]
             : ["Engagement with scenario", "Willingness to explore unfamiliar domains"];
@@ -113,24 +179,10 @@ router.post("/submit", async (req, res) => {
             `${course.name} Core Tooling`
         ];
 
-        // Insert into career_fit_results
-        await execute(
-            `INSERT INTO career_fit_results
-            (user_id, attempt_id, career_name, fit_percentage, strengths, areas_to_improve, recommended_skills)
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [
-                userId,
-                attemptId,
-                course.name,
-                percentageScore,
-                JSON.stringify(strengths),
-                JSON.stringify(areasToImprove),
-                JSON.stringify(recommendedSkills)
-            ]
-        );
-
         return res.json({
             success: true,
+            isGuest: !validUserId,
+            userId: validUserId,
             attemptId,
             courseName: course.name,
             score: percentageScore,
@@ -141,7 +193,10 @@ router.post("/submit", async (req, res) => {
             strengths,
             areasToImprove,
             recommendedSkills,
-            evaluations: evaluationDetails
+            evaluations: evaluationDetails,
+            message: validUserId
+                ? "Assessment attempt saved successfully."
+                : "Evaluation complete. Create an account or log in to permanently save your assessment history."
         });
 
     } catch (error) {

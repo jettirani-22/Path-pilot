@@ -20,6 +20,64 @@ let sqliteDb = null;
 let pgPool = null;
 let currentDbEngine = "sqlite"; // "postgres" or "sqlite"
 
+async function createPgPool(rawUrl) {
+    let poolConfig = null;
+    let fallbackPoolConfig = null;
+
+    try {
+        const regex = /^(postgres(?:ql)?:\/\/)(.*?):(.*)@([^@\/:]+)(?::(\d+))?\/([^?]+)(?:\?(.*))?$/;
+        const match = rawUrl.match(regex);
+        if (match) {
+            const [, , rawUser, rawPass, host, port, dbName] = match;
+            const decodedPass = decodeURIComponent(rawPass);
+            poolConfig = {
+                user: rawUser,
+                password: decodedPass,
+                host: host,
+                port: port ? parseInt(port, 10) : 5432,
+                database: dbName,
+                ssl: host.includes("localhost") ? false : { rejectUnauthorized: false }
+            };
+
+            const supabaseMatch = host.match(/^db\.([a-z0-9]+)\.supabase\.co$/);
+            if (supabaseMatch) {
+                const projectRef = supabaseMatch[1];
+                fallbackPoolConfig = {
+                    ...poolConfig,
+                    host: "aws-0-ap-northeast-2.pooler.supabase.com",
+                    user: poolConfig.user.includes(".") ? poolConfig.user : `postgres.${projectRef}`
+                };
+            }
+        }
+    } catch (_) {
+        // Fall back to connectionString
+    }
+
+    if (!poolConfig) {
+        poolConfig = {
+            connectionString: rawUrl,
+            ssl: rawUrl.includes("localhost") ? false : { rejectUnauthorized: false }
+        };
+    }
+
+    try {
+        const testPool = new Pool(poolConfig);
+        const client = await testPool.connect();
+        client.release();
+        return testPool;
+    } catch (err) {
+        if (fallbackPoolConfig && (err.code === "ENOTFOUND" || err.message.includes("ENOTFOUND") || err.message.includes("ETIMEDOUT"))) {
+            console.log(`ℹ️ Direct connection to ${poolConfig.host} unavailable (${err.code || err.message}).`);
+            console.log(`⚡ Routing through Supabase IPv4 connection pooler (${fallbackPoolConfig.host})...`);
+            const fallbackPool = new Pool(fallbackPoolConfig);
+            const client = await fallbackPool.connect();
+            client.release();
+            return fallbackPool;
+        }
+        throw err;
+    }
+}
+
 // Initialize database (Postgres if DATABASE_URL is provided, else SQLite)
 async function initializeDatabase() {
     const databaseUrl = process.env.DATABASE_URL?.trim();
@@ -28,15 +86,8 @@ async function initializeDatabase() {
         try {
             console.log("🔗 Connecting to Cloud PostgreSQL database...");
 
-            pgPool = new Pool({
-                connectionString: databaseUrl,
-                ssl: databaseUrl.includes("localhost") ? false : { rejectUnauthorized: false }
-            });
-
-            // Test connection
-            const client = await pgPool.connect();
+            pgPool = await createPgPool(databaseUrl);
             console.log("✅ Connected to Cloud PostgreSQL database successfully!");
-            client.release();
 
             // Run PostgreSQL schema
             const pgSchema = fs.readFileSync(pgSchemaPath, "utf8");

@@ -1,11 +1,31 @@
 import express from "express";
 import vm from "node:vm";
+import rateLimit from "express-rate-limit";
 import { queryAll, queryOne } from "../database/database.js";
 
 const router = express.Router();
 
 /**
+ * Rate limiter specifically protecting the live code execution endpoint.
+ * Allows up to 30 executions per minute per IP to prevent CPU starvation while ensuring
+ * students can test code iteratively during assessments.
+ */
+const codingRunLimiter = rateLimit({
+    windowMs: 1 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: {
+        success: false,
+        allPassed: false,
+        error: "Execution limit reached (maximum 30 runs per minute). Please wait a few seconds before trying again.",
+        results: []
+    }
+});
+
+/**
  * Execute JavaScript code in an isolated Node.js VM context with timeout and custom console capture.
+ * Structured as an isolated evaluator that can be swapped for V8 isolated-vm or micro-containers.
  */
 function runCodeInSandbox(userCode, testCases = []) {
     const stdout = [];
@@ -101,7 +121,7 @@ function runCodeInSandbox(userCode, testCases = []) {
 }
 
 // POST /api/coding/run - Run code and evaluate test cases
-router.post("/run", (req, res) => {
+router.post("/run", codingRunLimiter, (req, res) => {
     try {
         const { language = "javascript", code = "", testCases = [] } = req.body;
 

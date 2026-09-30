@@ -1,10 +1,11 @@
 import jwt from "jsonwebtoken";
 
 function getJwtSecret() {
-    return (
-        process.env.JWT_SECRET ||
-        "pathpilot-development-secret-change-this"
-    );
+    const secret = process.env.JWT_SECRET?.trim();
+    if (process.env.NODE_ENV === "production" && (!secret || secret.includes("change-this") || secret.includes("change_this"))) {
+        throw new Error("CRITICAL SECURITY ERROR: JWT_SECRET environment variable must be configured in production.");
+    }
+    return secret || "pathpilot-development-secret-change-this";
 }
 
 export function generateToken(user) {
