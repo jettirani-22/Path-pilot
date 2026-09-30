@@ -785,6 +785,17 @@ export default function SimulationLab({ currentUser, showToast, careers, DIFFICU
                     </div>
                   </div>
                 )}
+
+                {/* Mandatory Career-Fit Disclaimer */}
+                <div style={{ marginTop: 14, padding: "10px 14px", background: "#fffbeb", border: "1px solid #fef08a", borderRadius: 8, display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "#854d0e" }}>
+                  <Sparkles size={16} style={{ color: "#d97706", flexShrink: 0 }} />
+                  <div>
+                    <strong>Demo Career-Fit Insight — Not a professional assessment</strong>
+                    <div style={{ fontSize: 11, color: "#a16207", marginTop: 2 }}>
+                      Performance marks reflect scenario exploration to guide self-directed career development.
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
           </div>

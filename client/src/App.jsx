@@ -2686,6 +2686,16 @@ function PerformanceReport({ showToast }) {
         </div>
       )}
 
+      <div className="fit-disclaimer" style={{ background: "#fffbeb", border: "1px solid #fef08a", color: "#854d0e", padding: "12px 16px", borderRadius: "10px", marginTop: "20px", display: "flex", alignItems: "center", gap: "10px", fontSize: "13px" }}>
+        <Sparkles size={18} style={{ color: "#eab308", flexShrink: 0 }} />
+        <div>
+          <strong>Demo Career-Fit Insight — Not a professional assessment</strong>
+          <div style={{ marginTop: 2, fontSize: 12, color: "#a16207" }}>
+            PathPilot fit signals reflect diagnostic performance patterns across your completed simulation challenges to guide self-directed learning.
+          </div>
+        </div>
+      </div>
+
       <div style={{ marginTop: 24, textAlign: "center" }}>
         <Link className="secondary-action-btn" to="/careers">
           Explore Other Career Pathways →
