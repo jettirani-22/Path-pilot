@@ -1,4 +1,5 @@
 import { generateTasksForCourse, generateQuestionsForTask } from "./taskCatalog.js";
+import bcrypt from "bcryptjs";
 
 export async function seedDatabaseIfEmpty(engine, queryOneFn, executeFn) {
     try {
@@ -837,6 +838,31 @@ export async function seedDatabaseIfEmpty(engine, queryOneFn, executeFn) {
                 }
             }
         }
+        }
+
+        // =========================================================================
+        // 7. DEFAULT DEMO USERS (Demo Student & Admin)
+        // =========================================================================
+        const existingDemoStudent = await queryOneFn("SELECT id FROM users WHERE email = 'demo@pathpilot.com'");
+        if (!existingDemoStudent) {
+            const demoHash = await bcrypt.hash("password123", 10);
+            await executeFn(
+                engine === "postgres"
+                    ? "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) ON CONFLICT (email) DO NOTHING"
+                    : "INSERT OR IGNORE INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                ["Alex Morgan", "demo@pathpilot.com", demoHash, "student"]
+            );
+        }
+
+        const existingAdmin = await queryOneFn("SELECT id FROM users WHERE email = 'admin@pathpilot.com'");
+        if (!existingAdmin) {
+            const adminHash = await bcrypt.hash("admin1234", 10);
+            await executeFn(
+                engine === "postgres"
+                    ? "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?) ON CONFLICT (email) DO NOTHING"
+                    : "INSERT OR IGNORE INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                ["PathPilot Admin", "admin@pathpilot.com", adminHash, "admin"]
+            );
         }
 
         console.log(`✅ PathPilot ${engine} database ready: 4 difficulty levels, 288 progressive tasks, and randomized question bank seeded!`);

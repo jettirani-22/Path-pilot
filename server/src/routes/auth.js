@@ -301,54 +301,36 @@ router.post("/verify-otp", authLimiter, async (req, res) => {
 |--------------------------------------------------------------------------
 */
 
-router.post("/create-account", authLimiter, async (req, res) => {
+/*
+|--------------------------------------------------------------------------
+| POST /api/auth/register (Direct Signup - No OTP Required)
+|--------------------------------------------------------------------------
+*/
+
+router.post("/register", authLimiter, async (req, res) => {
     try {
-        const verificationToken = cleanText(req.body.verificationToken);
+        const name = cleanText(req.body.name);
+        const email = cleanText(req.body.email).toLowerCase();
         const password = req.body.password;
 
-        if (!verificationToken) {
-            return res.status(401).json({
-                success: false,
-                message: "Email verification token is required."
-            });
-        }
-
-        if (typeof password !== "string" || password.length < 8) {
+        if (!name || name.length < 2) {
             return res.status(400).json({
                 success: false,
-                message: "Password must contain at least 8 characters."
+                message: "Please enter your name (at least 2 characters)."
             });
         }
 
-        let decoded;
-        try {
-            decoded = jwt.verify(verificationToken, getJwtSecret());
-        } catch {
-            return res.status(401).json({
+        if (!email || !isValidEmail(email)) {
+            return res.status(400).json({
                 success: false,
-                message: "Email verification has expired. Please verify again."
+                message: "Please enter a valid email address."
             });
         }
 
-        if (decoded.type !== "email_verification") {
-            return res.status(401).json({
+        if (typeof password !== "string" || password.length < 6) {
+            return res.status(400).json({
                 success: false,
-                message: "Invalid verification token."
-            });
-        }
-
-        const email = cleanText(decoded.email).toLowerCase();
-        const name = cleanText(decoded.name);
-
-        const verification = await queryOne(
-            "SELECT email, verified_at FROM email_verifications WHERE email = ? LIMIT 1",
-            [email]
-        );
-
-        if (!verification || !verification.verified_at) {
-            return res.status(401).json({
-                success: false,
-                message: "Email has not been verified."
+                message: "Password must contain at least 6 characters."
             });
         }
 
@@ -360,11 +342,11 @@ router.post("/create-account", authLimiter, async (req, res) => {
         if (existing) {
             return res.status(409).json({
                 success: false,
-                message: "An account with this email already exists."
+                message: "An account with this email already exists. Please sign in instead."
             });
         }
 
-        const passwordHash = await bcrypt.hash(password, 12);
+        const passwordHash = await bcrypt.hash(password, 10);
 
         await execute(
             "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
@@ -378,13 +360,108 @@ router.post("/create-account", authLimiter, async (req, res) => {
 
         const token = generateToken(user);
 
-        await execute("DELETE FROM email_verifications WHERE email = ?", [email]);
+        return res.status(201).json({
+            success: true,
+            message: `Account created successfully! Welcome, ${user.name}.`,
+            token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                created_at: user.created_at
+            }
+        });
+
+    } catch (error) {
+        console.error("REGISTER ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Unable to create account. Please try again."
+        });
+    }
+});
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/auth/create-account (Backward Compatible Direct or Verified Signup)
+|--------------------------------------------------------------------------
+*/
+
+router.post("/create-account", authLimiter, async (req, res) => {
+    try {
+        const name = cleanText(req.body.name);
+        const email = cleanText(req.body.email).toLowerCase();
+        const verificationToken = cleanText(req.body.verificationToken);
+        const password = req.body.password;
+
+        if (typeof password !== "string" || password.length < 6) {
+            return res.status(400).json({
+                success: false,
+                message: "Password must contain at least 6 characters."
+            });
+        }
+
+        let targetEmail = email;
+        let targetName = name;
+
+        // If a verification token was passed, extract from it
+        if (verificationToken) {
+            try {
+                const decoded = jwt.verify(verificationToken, getJwtSecret());
+                if (decoded.email) targetEmail = cleanText(decoded.email).toLowerCase();
+                if (decoded.name) targetName = cleanText(decoded.name);
+            } catch (_) {}
+        }
+
+        if (!targetEmail || !isValidEmail(targetEmail)) {
+            return res.status(400).json({
+                success: false,
+                message: "A valid email address is required."
+            });
+        }
+
+        if (!targetName || targetName.length < 2) {
+            targetName = targetEmail.split("@")[0] || "Explorer";
+        }
+
+        const existing = await queryOne(
+            "SELECT id FROM users WHERE email = ? LIMIT 1",
+            [targetEmail]
+        );
+
+        if (existing) {
+            return res.status(409).json({
+                success: false,
+                message: "An account with this email already exists."
+            });
+        }
+
+        const passwordHash = await bcrypt.hash(password, 10);
+
+        await execute(
+            "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+            [targetName, targetEmail, passwordHash, "student"]
+        );
+
+        const user = await queryOne(
+            "SELECT id, name, email, role, created_at FROM users WHERE email = ? LIMIT 1",
+            [targetEmail]
+        );
+
+        const token = generateToken(user);
 
         return res.status(201).json({
             success: true,
-            message: "Account created successfully.",
+            message: `Account created successfully! Welcome, ${user.name}.`,
             token,
-            user
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                created_at: user.created_at
+            }
         });
 
     } catch (error) {
@@ -398,7 +475,7 @@ router.post("/create-account", authLimiter, async (req, res) => {
 
 /*
 |--------------------------------------------------------------------------
-| POST /api/auth/login
+| POST /api/auth/login (Email + Password Login)
 |--------------------------------------------------------------------------
 */
 
@@ -429,7 +506,8 @@ router.post("/login", authLimiter, async (req, res) => {
         if (!user) {
             return res.status(401).json({
                 success: false,
-                message: "Invalid email or password."
+                notFound: true,
+                message: "No account found with this email. Please check your email or click Create an Account."
             });
         }
 
@@ -437,7 +515,7 @@ router.post("/login", authLimiter, async (req, res) => {
         if (!passwordMatches) {
             return res.status(401).json({
                 success: false,
-                message: "Invalid email or password."
+                message: "Incorrect password. Please verify and try again."
             });
         }
 
@@ -450,7 +528,7 @@ router.post("/login", authLimiter, async (req, res) => {
 
         return res.json({
             success: true,
-            message: "Login successful.",
+            message: `Welcome back, ${user.name}!`,
             token,
             user: {
                 id: user.id,
@@ -465,7 +543,64 @@ router.post("/login", authLimiter, async (req, res) => {
         console.error("LOGIN ERROR:", error);
         return res.status(500).json({
             success: false,
-            message: "Login failed."
+            message: "Login failed. Please try again."
+        });
+    }
+});
+
+/*
+|--------------------------------------------------------------------------
+| POST /api/auth/demo-login (1-Click Instant Demo Login)
+|--------------------------------------------------------------------------
+*/
+
+router.post("/demo-login", authLimiter, async (req, res) => {
+    try {
+        const role = req.body.role === "admin" ? "admin" : "student";
+        const email = role === "admin" ? "admin@pathpilot.com" : "demo@pathpilot.com";
+        const name = role === "admin" ? "PathPilot Admin" : "Alex Morgan (Demo)";
+
+        let user = await queryOne(
+            "SELECT id, name, email, password_hash, role, created_at FROM users WHERE email = ? LIMIT 1",
+            [email]
+        );
+
+        if (!user) {
+            const passwordHash = await bcrypt.hash("password123", 10);
+            await execute(
+                "INSERT INTO users (name, email, password_hash, role) VALUES (?, ?, ?, ?)",
+                [name, email, passwordHash, role]
+            );
+            user = await queryOne(
+                "SELECT id, name, email, password_hash, role, created_at FROM users WHERE email = ? LIMIT 1",
+                [email]
+            );
+        }
+
+        await execute(
+            "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+            [user.id]
+        );
+
+        const token = generateToken(user);
+
+        return res.json({
+            success: true,
+            message: `Logged in as ${user.name}!`,
+            token,
+            user: {
+                id: user.id,
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                created_at: user.created_at
+            }
+        });
+    } catch (error) {
+        console.error("DEMO LOGIN ERROR:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Demo login failed."
         });
     }
 });

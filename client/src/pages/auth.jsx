@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import {
     ArrowRight,
     CheckCircle2,
@@ -8,7 +8,10 @@ import {
     LockKeyhole,
     Mail,
     ShieldCheck,
-    UserRound
+    UserRound,
+    Sparkles,
+    AlertCircle,
+    Zap
 } from "lucide-react";
 
 const API_BASE = "/api";
@@ -28,33 +31,69 @@ async function apiRequest(endpoint, options = {}) {
     }));
 
     if (!response.ok) {
-        throw new Error(
-            data.message || "Something went wrong."
-        );
+        const error = new Error(data.message || "Authentication request failed.");
+        error.data = data;
+        throw error;
     }
 
     return data;
 }
 
 /* =========================================================
-   LOGIN
+   LOGIN (Direct Email & Password - No OTP)
 ========================================================= */
 
 export function LoginPage({ onLogin }) {
+    const navigate = useNavigate();
+    const location = useLocation();
+
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
+    const [rememberEmail, setRememberEmail] = useState(true);
 
     const [loading, setLoading] = useState(false);
+    const [demoLoading, setDemoLoading] = useState(false);
     const [error, setError] = useState("");
+    const [isNotFound, setIsNotFound] = useState(false);
+    const [successMessage, setSuccessMessage] = useState("");
+
+    // Load saved email if any
+    useEffect(() => {
+        const saved = localStorage.getItem("pathpilot_saved_email");
+        if (saved) {
+            setEmail(saved);
+        }
+    }, []);
+
+    const handleLoginSuccess = (user, token) => {
+        if (rememberEmail && email) {
+            localStorage.setItem("pathpilot_saved_email", email.trim());
+        }
+
+        setSuccessMessage(`Welcome back, ${user?.name || "Explorer"}! Redirecting...`);
+
+        if (typeof onLogin === "function") {
+            onLogin(user, token);
+        }
+
+        setTimeout(() => {
+            const redirectPath = location.state?.from || "/dashboard";
+            navigate(redirectPath, { replace: true });
+        }, 600);
+    };
 
     const handleSubmit = async (event) => {
         event.preventDefault();
 
         setError("");
+        setIsNotFound(false);
+        setSuccessMessage("");
 
-        if (!email.trim()) {
-            setError("Please enter your email.");
+        const cleanEmail = email.trim();
+
+        if (!cleanEmail) {
+            setError("Please enter your email address.");
             return;
         }
 
@@ -69,17 +108,52 @@ export function LoginPage({ onLogin }) {
             const data = await apiRequest("/auth/login", {
                 method: "POST",
                 body: JSON.stringify({
-                    email: email.trim(),
+                    email: cleanEmail,
                     password
                 })
             });
 
-            onLogin(data.user, data.token);
+            handleLoginSuccess(data.user, data.token);
 
-        } catch (error) {
-            setError(error.message);
+        } catch (err) {
+            setError(err.message || "Login failed. Please check your credentials.");
+            if (err.data?.notFound) {
+                setIsNotFound(true);
+            }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleDemoLogin = async () => {
+        setError("");
+        setIsNotFound(false);
+        setSuccessMessage("");
+
+        try {
+            setDemoLoading(true);
+            const data = await apiRequest("/auth/demo-login", {
+                method: "POST",
+                body: JSON.stringify({ role: "student" })
+            });
+
+            handleLoginSuccess(data.user, data.token);
+        } catch (err) {
+            // Fallback: try regular login with seeded credentials
+            try {
+                const data = await apiRequest("/auth/login", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        email: "demo@pathpilot.com",
+                        password: "password123"
+                    })
+                });
+                handleLoginSuccess(data.user, data.token);
+            } catch (fallbackErr) {
+                setError("Unable to initialize demo account. You can register a new account below.");
+            }
+        } finally {
+            setDemoLoading(false);
         }
     };
 
@@ -89,321 +163,270 @@ export function LoginPage({ onLogin }) {
             <div className="auth-background-shape auth-shape-two" />
 
             <div className="auth-card">
-
                 <div className="auth-brand">
-                    <div className="auth-logo">
-                        PathPilot <span>➤</span>
-                    </div>
-
-                    <p>Career Simulation Lab</p>
+                    <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+                        <div className="auth-logo">
+                            PathPilot <span>➤</span>
+                        </div>
+                        <p>Career Simulation Lab</p>
+                    </Link>
                 </div>
 
                 <div className="auth-heading">
                     <span className="auth-eyebrow">
-                        WELCOME BACK
+                        STUDENT & PROFESSIONAL PORTAL
                     </span>
 
-                    <h1>Experience Before You Choose.</h1>
+                    <h1>Welcome Back</h1>
 
                     <p>
-                        Sign in to continue exploring careers,
-                        simulations and your progress.
+                        Sign in with your email and password to access your career tracks, interactive coding labs, and earned mastery badges.
                     </p>
                 </div>
 
-                <form
-                    className="auth-form"
-                    onSubmit={handleSubmit}
-                >
+                {/* 1-Click Instant Demo Login Option */}
+                <div style={{ marginBottom: 18 }}>
+                    <button
+                        type="button"
+                        onClick={handleDemoLogin}
+                        disabled={loading || demoLoading}
+                        style={{
+                            width: "100%",
+                            padding: "11px 14px",
+                            background: "linear-gradient(135deg, #1e40af 0%, #2563eb 100%)",
+                            color: "#ffffff",
+                            border: "none",
+                            borderRadius: 10,
+                            fontWeight: 700,
+                            fontSize: 13,
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 8,
+                            cursor: "pointer",
+                            boxShadow: "0 4px 14px rgba(37, 99, 235, 0.25)",
+                            transition: "all 0.2s ease"
+                        }}
+                    >
+                        <Zap size={16} style={{ color: "#fef08a" }} />
+                        <span>
+                            {demoLoading ? "Accessing Demo Account..." : "⚡ One-Click Demo Student Login"}
+                        </span>
+                    </button>
+                    <div style={{ textAlign: "center", marginTop: 6, fontSize: 11, color: "#64748b" }}>
+                        Pre-loaded with simulations & badges (demo@pathpilot.com)
+                    </div>
+                </div>
 
+                <div className="auth-divider" style={{ margin: "16px 0 18px" }}>
+                    <span>OR SIGN IN WITH EMAIL</span>
+                </div>
+
+                <form className="auth-form" onSubmit={handleSubmit}>
                     <label>
                         Email address
-
                         <div className="auth-input">
                             <Mail size={18} />
-
                             <input
                                 type="email"
                                 placeholder="you@example.com"
                                 value={email}
-                                onChange={(event) =>
-                                    setEmail(event.target.value)
-                                }
+                                onChange={(e) => setEmail(e.target.value)}
                                 autoComplete="email"
+                                required
                             />
                         </div>
                     </label>
 
                     <label>
                         Password
-
                         <div className="auth-input">
                             <LockKeyhole size={18} />
-
                             <input
-                                type={
-                                    showPassword
-                                        ? "text"
-                                        : "password"
-                                }
-                                placeholder="Enter your password"
+                                type={showPassword ? "text" : "password"}
+                                placeholder="Enter your account password"
                                 value={password}
-                                onChange={(event) =>
-                                    setPassword(event.target.value)
-                                }
+                                onChange={(e) => setPassword(e.target.value)}
                                 autoComplete="current-password"
+                                required
                             />
-
                             <button
                                 type="button"
                                 className="password-toggle"
-                                onClick={() =>
-                                    setShowPassword(
-                                        !showPassword
-                                    )
-                                }
+                                onClick={() => setShowPassword(!showPassword)}
+                                tabIndex={-1}
+                                title={showPassword ? "Hide password" : "Show password"}
                             >
-                                {showPassword ? (
-                                    <EyeOff size={18} />
-                                ) : (
-                                    <Eye size={18} />
-                                )}
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
                     </label>
 
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", color: "#64748b", margin: 0 }}>
+                            <input
+                                type="checkbox"
+                                checked={rememberEmail}
+                                onChange={(e) => setRememberEmail(e.target.checked)}
+                                style={{ cursor: "pointer" }}
+                            />
+                            <span>Remember email</span>
+                        </label>
+
+                        <Link to="/signup" style={{ color: "#2563eb", fontWeight: 600, textDecoration: "none" }}>
+                            Need an account?
+                        </Link>
+                    </div>
+
                     {error && (
-                        <div className="auth-error">
-                            {error}
+                        <div className="auth-error" style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                            <div>
+                                <span>{error}</span>
+                                {isNotFound && (
+                                    <div style={{ marginTop: 6 }}>
+                                        <Link
+                                            to="/signup"
+                                            state={{ initialEmail: email }}
+                                            style={{ color: "#991b1b", textDecoration: "underline", fontWeight: 700 }}
+                                        >
+                                            Click here to create this account now →
+                                        </Link>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {successMessage && (
+                        <div className="auth-success" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <CheckCircle2 size={16} style={{ color: "#16a34a" }} />
+                            <span>{successMessage}</span>
                         </div>
                     )}
 
                     <button
                         className="auth-submit"
                         type="submit"
-                        disabled={loading}
+                        disabled={loading || demoLoading || Boolean(successMessage)}
                     >
-                        {loading
-                            ? "Signing in..."
-                            : "Sign In"}
-
-                        {!loading && (
-                            <ArrowRight size={18} />
+                        {loading ? (
+                            <span>Signing In...</span>
+                        ) : (
+                            <>
+                                <span>Sign In</span>
+                                <ArrowRight size={18} />
+                            </>
                         )}
                     </button>
-
                 </form>
 
                 <div className="auth-divider">
                     <span>NEW TO PATHPILOT?</span>
                 </div>
 
-                <Link
-                    className="auth-secondary"
-                    to="/signup"
-                >
-                    Create a new account
+                <Link className="auth-secondary" to="/signup">
+                    <span>Create a new account (No OTP required)</span>
                     <ArrowRight size={17} />
                 </Link>
 
                 <div className="auth-security">
-                    <ShieldCheck size={17} />
-
-                    <span>
-                        Your account data is protected
-                        by authenticated access.
-                    </span>
+                    <ShieldCheck size={16} style={{ color: "#10b981" }} />
+                    <span>Protected with encrypted passwords & JWT security tokens.</span>
                 </div>
-
             </div>
         </div>
     );
 }
 
 /* =========================================================
-   SIGN UP
+   SIGN UP (1-Step Direct Account Creation - No OTP)
 ========================================================= */
 
 export function SignupPage({ onLogin }) {
-    const [step, setStep] = useState(1);
+    const navigate = useNavigate();
+    const location = useLocation();
 
     const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
-
-    const [otp, setOtp] = useState("");
-
-    const [verificationToken, setVerificationToken] =
-        useState("");
-
+    const [email, setEmail] = useState(location.state?.initialEmail || "");
     const [password, setPassword] = useState("");
-    const [confirmPassword, setConfirmPassword] =
-        useState("");
-
-    const [showPassword, setShowPassword] =
-        useState(false);
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
-    const [success, setSuccess] = useState("");
+    const [successMessage, setSuccessMessage] = useState("");
 
-    const [developmentOtp, setDevelopmentOtp] =
-        useState("");
-
-    /* -----------------------------------------------------
-       STEP 1 - SEND OTP
-    ----------------------------------------------------- */
-
-    const sendOtp = async (event) => {
+    const handleSubmit = async (event) => {
         event.preventDefault();
 
         setError("");
-        setSuccess("");
+        setSuccessMessage("");
 
-        if (name.trim().length < 2) {
-            setError(
-                "Please enter your name."
-            );
+        const cleanName = name.trim();
+        const cleanEmail = email.trim();
+
+        if (cleanName.length < 2) {
+            setError("Please enter your full name (at least 2 characters).");
             return;
         }
 
-        if (!email.trim()) {
-            setError(
-                "Please enter your email."
-            );
+        if (!cleanEmail) {
+            setError("Please enter a valid email address.");
             return;
         }
 
-        try {
-            setLoading(true);
-
-            const data = await apiRequest(
-                "/auth/send-otp",
-                {
-                    method: "POST",
-                    body: JSON.stringify({
-                        name: name.trim(),
-                        email: email.trim()
-                    })
-                }
-            );
-
-            setDevelopmentOtp(
-                data.developmentOtp || ""
-            );
-
-            setSuccess(
-                data.message ||
-                "Verification OTP sent."
-            );
-
-            setStep(2);
-
-        } catch (error) {
-            setError(error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    /* -----------------------------------------------------
-       STEP 2 - VERIFY OTP
-    ----------------------------------------------------- */
-
-    const verifyOtp = async (event) => {
-        event.preventDefault();
-
-        setError("");
-        setSuccess("");
-
-        if (!/^\d{6}$/.test(otp)) {
-            setError(
-                "Enter the 6-digit OTP."
-            );
-            return;
-        }
-
-        try {
-            setLoading(true);
-
-            const data = await apiRequest(
-                "/auth/verify-otp",
-                {
-                    method: "POST",
-                    body: JSON.stringify({
-                        email: email.trim(),
-                        otp
-                    })
-                }
-            );
-
-            setVerificationToken(
-                data.verificationToken
-            );
-
-            setSuccess(
-                "Email verified successfully."
-            );
-
-            setStep(3);
-
-        } catch (error) {
-            setError(error.message);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    /* -----------------------------------------------------
-       STEP 3 - CREATE PASSWORD
-    ----------------------------------------------------- */
-
-    const createAccount = async (event) => {
-        event.preventDefault();
-
-        setError("");
-        setSuccess("");
-
-        if (password.length < 8) {
-            setError(
-                "Password must contain at least 8 characters."
-            );
+        if (password.length < 6) {
+            setError("Password must contain at least 6 characters.");
             return;
         }
 
         if (password !== confirmPassword) {
-            setError(
-                "Passwords do not match."
-            );
+            setError("Passwords do not match. Please verify your password confirmation.");
             return;
         }
 
         try {
             setLoading(true);
 
-            const data = await apiRequest(
-                "/auth/create-account",
-                {
+            // Directly register via /register with fallback to /create-account
+            let data;
+            try {
+                data = await apiRequest("/auth/register", {
                     method: "POST",
                     body: JSON.stringify({
-                        verificationToken,
+                        name: cleanName,
+                        email: cleanEmail,
                         password
                     })
+                });
+            } catch (regErr) {
+                if (regErr.data?.message?.includes("already exists")) {
+                    throw regErr;
                 }
-            );
+                // Fallback to /create-account endpoint
+                data = await apiRequest("/auth/create-account", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        name: cleanName,
+                        email: cleanEmail,
+                        password
+                    })
+                });
+            }
 
-            setSuccess(
-                "Account created successfully."
-            );
+            setSuccessMessage(`Account created! Welcome, ${cleanName}. Redirecting to dashboard...`);
+
+            if (typeof onLogin === "function") {
+                onLogin(data.user, data.token);
+            }
 
             setTimeout(() => {
-                onLogin(
-                    data.user,
-                    data.token
-                );
-            }, 500);
+                navigate("/dashboard", { replace: true });
+            }, 600);
 
-        } catch (error) {
-            setError(error.message);
+        } catch (err) {
+            setError(err.message || "Failed to create account. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -411,390 +434,156 @@ export function SignupPage({ onLogin }) {
 
     return (
         <div className="auth-page">
-
             <div className="auth-background-shape auth-shape-one" />
             <div className="auth-background-shape auth-shape-two" />
 
             <div className="auth-card signup-card">
-
                 <div className="auth-brand">
-                    <div className="auth-logo">
-                        PathPilot <span>➤</span>
-                    </div>
-
-                    <p>Career Simulation Lab</p>
+                    <Link to="/" style={{ textDecoration: "none", color: "inherit" }}>
+                        <div className="auth-logo">
+                            PathPilot <span>➤</span>
+                        </div>
+                        <p>Career Simulation Lab</p>
+                    </Link>
                 </div>
 
-                <div className="signup-progress">
-                    <div
-                        className={
-                            step >= 1
-                                ? "progress-step active"
-                                : "progress-step"
-                        }
-                    >
-                        <span>1</span>
-                        <small>Details</small>
-                    </div>
+                <div className="auth-heading">
+                    <span className="auth-eyebrow">
+                        INSTANT REGISTRATION
+                    </span>
 
-                    <div className="progress-line" />
+                    <h1>Create Your Account</h1>
 
-                    <div
-                        className={
-                            step >= 2
-                                ? "progress-step active"
-                                : "progress-step"
-                        }
-                    >
-                        <span>2</span>
-                        <small>Verify</small>
-                    </div>
-
-                    <div className="progress-line" />
-
-                    <div
-                        className={
-                            step >= 3
-                                ? "progress-step active"
-                                : "progress-step"
-                        }
-                    >
-                        <span>3</span>
-                        <small>Password</small>
-                    </div>
+                    <p>
+                        Get immediate access to 4 career tracks, 288 progressive simulation tasks, and verified certifications.
+                    </p>
                 </div>
 
-                {/* STEP 1 */}
-
-                {step === 1 && (
-                    <>
-                        <div className="auth-heading">
-                            <span className="auth-eyebrow">
-                                CREATE ACCOUNT
-                            </span>
-
-                            <h1>Start your PathPilot journey.</h1>
-
-                            <p>
-                                Enter your details and we'll
-                                verify your email before
-                                creating your account.
-                            </p>
+                <form className="auth-form" onSubmit={handleSubmit}>
+                    <label>
+                        Full name
+                        <div className="auth-input">
+                            <UserRound size={18} />
+                            <input
+                                type="text"
+                                placeholder="e.g. Jane Doe"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                autoComplete="name"
+                                required
+                            />
                         </div>
+                    </label>
 
-                        <form
-                            className="auth-form"
-                            onSubmit={sendOtp}
-                        >
-
-                            <label>
-                                Your name
-
-                                <div className="auth-input">
-                                    <UserRound size={18} />
-
-                                    <input
-                                        type="text"
-                                        placeholder="Your full name"
-                                        value={name}
-                                        onChange={(event) =>
-                                            setName(
-                                                event.target.value
-                                            )
-                                        }
-                                        autoComplete="name"
-                                    />
-                                </div>
-                            </label>
-
-                            <label>
-                                Email address
-
-                                <div className="auth-input">
-                                    <Mail size={18} />
-
-                                    <input
-                                        type="email"
-                                        placeholder="you@example.com"
-                                        value={email}
-                                        onChange={(event) =>
-                                            setEmail(
-                                                event.target.value
-                                            )
-                                        }
-                                        autoComplete="email"
-                                    />
-                                </div>
-                            </label>
-
-                            {error && (
-                                <div className="auth-error">
-                                    {error}
-                                </div>
-                            )}
-
-                            <button
-                                className="auth-submit"
-                                disabled={loading}
-                                type="submit"
-                            >
-                                {loading
-                                    ? "Sending OTP..."
-                                    : "Send Verification OTP"}
-
-                                {!loading && (
-                                    <ArrowRight size={18} />
-                                )}
-                            </button>
-
-                        </form>
-                    </>
-                )}
-
-                {/* STEP 2 */}
-
-                {step === 2 && (
-                    <>
-                        <div className="auth-heading">
-                            <span className="auth-eyebrow">
-                                EMAIL VERIFICATION
-                            </span>
-
-                            <h1>Check your email.</h1>
-
-                            <p>
-                                We sent a 6-digit verification
-                                code to:
-                            </p>
-
-                            <strong className="verification-email">
-                                {email}
-                            </strong>
+                    <label>
+                        Email address
+                        <div className="auth-input">
+                            <Mail size={18} />
+                            <input
+                                type="email"
+                                placeholder="you@example.com"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                autoComplete="email"
+                                required
+                            />
                         </div>
+                    </label>
 
-                        <form
-                            className="auth-form"
-                            onSubmit={verifyOtp}
-                        >
-
-                            <label>
-                                Verification OTP
-
-                                <div className="auth-input otp-input">
-                                    <ShieldCheck size={18} />
-
-                                    <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        maxLength={6}
-                                        placeholder="000000"
-                                        value={otp}
-                                        onChange={(event) =>
-                                            setOtp(
-                                                event.target.value
-                                                    .replace(
-                                                        /\D/g,
-                                                        ""
-                                                    )
-                                            )
-                                        }
-                                    />
-                                </div>
-                            </label>
-
-                            {developmentOtp && (
-                                <div className="demo-otp">
-                                    <strong>
-                                        Development OTP:
-                                    </strong>
-
-                                    <span>
-                                        {developmentOtp}
-                                    </span>
-
-                                    <small>
-                                        Email SMTP is not configured
-                                        yet. This code is shown only
-                                        for local development.
-                                    </small>
-                                </div>
-                            )}
-
-                            {success && (
-                                <div className="auth-success">
-                                    <CheckCircle2 size={17} />
-                                    {success}
-                                </div>
-                            )}
-
-                            {error && (
-                                <div className="auth-error">
-                                    {error}
-                                </div>
-                            )}
-
-                            <button
-                                className="auth-submit"
-                                disabled={loading}
-                                type="submit"
-                            >
-                                {loading
-                                    ? "Verifying..."
-                                    : "Verify Email"}
-
-                                {!loading && (
-                                    <CheckCircle2 size={18} />
-                                )}
-                            </button>
-
+                    <label>
+                        Password
+                        <div className="auth-input">
+                            <LockKeyhole size={18} />
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="At least 6 characters"
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                autoComplete="new-password"
+                                required
+                            />
                             <button
                                 type="button"
-                                className="auth-back-button"
-                                onClick={() => {
-                                    setStep(1);
-                                    setOtp("");
-                                    setError("");
-                                    setSuccess("");
-                                }}
+                                className="password-toggle"
+                                onClick={() => setShowPassword(!showPassword)}
+                                tabIndex={-1}
+                                title={showPassword ? "Hide password" : "Show password"}
                             >
-                                Change email
+                                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
-
-                        </form>
-                    </>
-                )}
-
-                {/* STEP 3 */}
-
-                {step === 3 && (
-                    <>
-                        <div className="auth-heading">
-                            <span className="auth-eyebrow">
-                                EMAIL VERIFIED
-                            </span>
-
-                            <h1>Create your password.</h1>
-
-                            <p>
-                                Your email has been verified.
-                                Create a password to finish
-                                your account.
-                            </p>
                         </div>
+                    </label>
 
-                        <form
-                            className="auth-form"
-                            onSubmit={createAccount}
-                        >
+                    <label>
+                        Confirm password
+                        <div className="auth-input">
+                            <LockKeyhole size={18} />
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                placeholder="Repeat password to confirm"
+                                value={confirmPassword}
+                                onChange={(e) => setConfirmPassword(e.target.value)}
+                                autoComplete="new-password"
+                                required
+                            />
+                        </div>
+                    </label>
 
-                            <label>
-                                Create password
+                    {/* Password criteria status */}
+                    <div style={{ display: "flex", gap: 14, fontSize: 12, color: "#64748b" }}>
+                        <span style={{ color: password.length >= 6 ? "#16a34a" : "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                            <CheckCircle2 size={13} style={{ color: password.length >= 6 ? "#16a34a" : "#94a3b8" }} />
+                            6+ characters
+                        </span>
+                        <span style={{ color: password && password === confirmPassword ? "#16a34a" : "#64748b", display: "flex", alignItems: "center", gap: 4 }}>
+                            <CheckCircle2 size={13} style={{ color: password && password === confirmPassword ? "#16a34a" : "#94a3b8" }} />
+                            Passwords match
+                        </span>
+                    </div>
 
-                                <div className="auth-input">
-                                    <LockKeyhole size={18} />
+                    {error && (
+                        <div className="auth-error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                            <span>{error}</span>
+                        </div>
+                    )}
 
-                                    <input
-                                        type={
-                                            showPassword
-                                                ? "text"
-                                                : "password"
-                                        }
-                                        placeholder="Minimum 8 characters"
-                                        value={password}
-                                        onChange={(event) =>
-                                            setPassword(
-                                                event.target.value
-                                            )
-                                        }
-                                        autoComplete="new-password"
-                                    />
+                    {successMessage && (
+                        <div className="auth-success" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <CheckCircle2 size={16} style={{ color: "#16a34a" }} />
+                            <span>{successMessage}</span>
+                        </div>
+                    )}
 
-                                    <button
-                                        type="button"
-                                        className="password-toggle"
-                                        onClick={() =>
-                                            setShowPassword(
-                                                !showPassword
-                                            )
-                                        }
-                                    >
-                                        {showPassword ? (
-                                            <EyeOff size={18} />
-                                        ) : (
-                                            <Eye size={18} />
-                                        )}
-                                    </button>
-                                </div>
-                            </label>
-
-                            <label>
-                                Confirm password
-
-                                <div className="auth-input">
-                                    <LockKeyhole size={18} />
-
-                                    <input
-                                        type="password"
-                                        placeholder="Enter password again"
-                                        value={confirmPassword}
-                                        onChange={(event) =>
-                                            setConfirmPassword(
-                                                event.target.value
-                                            )
-                                        }
-                                        autoComplete="new-password"
-                                    />
-                                </div>
-                            </label>
-
-                            <div className="password-rule">
-                                <CheckCircle2 size={16} />
-                                At least 8 characters
-                            </div>
-
-                            {success && (
-                                <div className="auth-success">
-                                    <CheckCircle2 size={17} />
-                                    {success}
-                                </div>
-                            )}
-
-                            {error && (
-                                <div className="auth-error">
-                                    {error}
-                                </div>
-                            )}
-
-                            <button
-                                className="auth-submit"
-                                disabled={loading}
-                                type="submit"
-                            >
-                                {loading
-                                    ? "Creating account..."
-                                    : "Create Account"}
-
-                                {!loading && (
-                                    <ArrowRight size={18} />
-                                )}
-                            </button>
-
-                        </form>
-                    </>
-                )}
+                    <button
+                        className="auth-submit"
+                        type="submit"
+                        disabled={loading || Boolean(successMessage)}
+                    >
+                        {loading ? (
+                            <span>Creating Account...</span>
+                        ) : (
+                            <>
+                                <span>Create Account & Start</span>
+                                <ArrowRight size={18} />
+                            </>
+                        )}
+                    </button>
+                </form>
 
                 <div className="auth-divider">
-                    <span>ALREADY HAVE AN ACCOUNT?</span>
+                    <span>ALREADY REGISTERED?</span>
                 </div>
 
-                <Link
-                    className="auth-secondary"
-                    to="/login"
-                >
-                    Sign in instead
+                <Link className="auth-secondary" to="/login">
+                    <span>Sign in to your account</span>
                     <ArrowRight size={17} />
                 </Link>
 
+                <div className="auth-security">
+                    <ShieldCheck size={16} style={{ color: "#10b981" }} />
+                    <span>Instant access without verification delays.</span>
+                </div>
             </div>
         </div>
     );
