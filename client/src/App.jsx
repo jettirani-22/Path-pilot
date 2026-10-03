@@ -852,6 +852,33 @@ function App() {
     }
   });
 
+  // Verify and maintain persistent login session on mount
+  useEffect(() => {
+    const token = localStorage.getItem("pathpilot_token");
+    if (token) {
+      fetch("/api/auth/me", {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem("pathpilot_user", JSON.stringify(data.user));
+          } else {
+            // Token expired or invalid
+            localStorage.removeItem("pathpilot_user");
+            localStorage.removeItem("pathpilot_token");
+            setCurrentUser(null);
+          }
+        })
+        .catch(() => {
+          // Keep current state on network failure
+        });
+    }
+  }, []);
+
   const [toastMessage, setToastMessage] = useState("");
 
   const showToast = (msg) => {
@@ -862,14 +889,14 @@ function App() {
   };
 
   const handleLogin = (user, token) => {
-    setCurrentUser(user);
     if (user) {
+      setCurrentUser(user);
       localStorage.setItem("pathpilot_user", JSON.stringify(user));
     }
     if (token) {
       localStorage.setItem("pathpilot_token", token);
     }
-    showToast(`Welcome, ${user.name || "Explorer"}!`);
+    showToast(`Welcome, ${user?.name || "Explorer"}!`);
   };
 
   const handleLogout = () => {
@@ -988,7 +1015,11 @@ function Layout({ children, currentUser, onLogout, showToast }) {
     ...(currentUser?.role === "admin" ? [{ path: "/admin", label: "Admin Lab", icon: Shield }] : [])
   ];
 
-  const userInitial = currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "G";
+  const userInitial = currentUser?.name
+    ? currentUser.name.charAt(0).toUpperCase()
+    : currentUser?.email
+    ? currentUser.email.charAt(0).toUpperCase()
+    : "G";
 
   return (
     <div className="app-shell">
@@ -1149,7 +1180,7 @@ function Layout({ children, currentUser, onLogout, showToast }) {
                 }}
               >
                 <div className="avatar">{userInitial}</div>
-                <span className="user-name">Hi, {currentUser.name.split(" ")[0]}</span>
+                <span className="user-name">Hi, {(currentUser.name || currentUser.email || "Explorer").split(" ")[0]}</span>
                 <ChevronDown size={16} style={{ color: "#64748b" }} />
               </button>
             ) : (

@@ -58,6 +58,15 @@ export function LoginPage({ onLogin }) {
     const [isNotFound, setIsNotFound] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
 
+    // If already logged in, redirect straight to dashboard
+    useEffect(() => {
+        const token = localStorage.getItem("pathpilot_token");
+        const user = localStorage.getItem("pathpilot_user");
+        if (token && user) {
+            navigate("/dashboard", { replace: true });
+        }
+    }, [navigate]);
+
     // Load saved email if any
     useEffect(() => {
         const saved = localStorage.getItem("pathpilot_saved_email");
@@ -67,6 +76,12 @@ export function LoginPage({ onLogin }) {
     }, []);
 
     const handleLoginSuccess = (user, token) => {
+        if (token) {
+            localStorage.setItem("pathpilot_token", token);
+        }
+        if (user) {
+            localStorage.setItem("pathpilot_user", JSON.stringify(user));
+        }
         if (rememberEmail && email) {
             localStorage.setItem("pathpilot_saved_email", email.trim());
         }
@@ -80,7 +95,7 @@ export function LoginPage({ onLogin }) {
         setTimeout(() => {
             const redirectPath = location.state?.from || "/dashboard";
             navigate(redirectPath, { replace: true });
-        }, 600);
+        }, 500);
     };
 
     const handleSubmit = async (event) => {
@@ -357,6 +372,15 @@ export function SignupPage({ onLogin }) {
     const [error, setError] = useState("");
     const [successMessage, setSuccessMessage] = useState("");
 
+    // If already logged in, redirect straight to dashboard
+    useEffect(() => {
+        const token = localStorage.getItem("pathpilot_token");
+        const user = localStorage.getItem("pathpilot_user");
+        if (token && user) {
+            navigate("/dashboard", { replace: true });
+        }
+    }, [navigate]);
+
     const handleSubmit = async (event) => {
         event.preventDefault();
 
@@ -417,13 +441,22 @@ export function SignupPage({ onLogin }) {
 
             setSuccessMessage(`Account created! Welcome, ${cleanName}. Redirecting to dashboard...`);
 
+            // Immediately store credentials & session token
+            if (data.token) {
+                localStorage.setItem("pathpilot_token", data.token);
+            }
+            if (data.user) {
+                localStorage.setItem("pathpilot_user", JSON.stringify(data.user));
+            }
+            localStorage.setItem("pathpilot_saved_email", cleanEmail);
+
             if (typeof onLogin === "function") {
                 onLogin(data.user, data.token);
             }
 
             setTimeout(() => {
                 navigate("/dashboard", { replace: true });
-            }, 600);
+            }, 500);
 
         } catch (err) {
             setError(err.message || "Failed to create account. Please try again.");
