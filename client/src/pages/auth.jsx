@@ -67,13 +67,17 @@ export function LoginPage({ onLogin }) {
         }
     }, [navigate]);
 
-    // Load saved email if any
+    // Load saved or passed email
     useEffect(() => {
-        const saved = localStorage.getItem("pathpilot_saved_email");
-        if (saved) {
-            setEmail(saved);
+        if (location.state?.initialEmail) {
+            setEmail(location.state.initialEmail);
+        } else {
+            const saved = localStorage.getItem("pathpilot_saved_email");
+            if (saved) {
+                setEmail(saved);
+            }
         }
-    }, []);
+    }, [location.state]);
 
     const handleLoginSuccess = (user, token) => {
         if (token) {
@@ -184,6 +188,50 @@ export function LoginPage({ onLogin }) {
                             PathPilot <span>➤</span>
                         </div>
                         <p>Career Simulation Lab</p>
+                    </Link>
+                </div>
+
+                {/* Clear Mode Switcher Tabs */}
+                <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    background: "#f1f5f9",
+                    padding: 4,
+                    borderRadius: 12,
+                    marginBottom: 20,
+                    gap: 4
+                }}>
+                    <div
+                        style={{
+                            textAlign: "center",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            background: "#ffffff",
+                            color: "#0f172a",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                            cursor: "default"
+                        }}
+                    >
+                        Sign In
+                    </div>
+                    <Link
+                        to="/signup"
+                        state={{ initialEmail: email }}
+                        style={{
+                            textAlign: "center",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            textDecoration: "none",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            background: "transparent",
+                            color: "#64748b",
+                            transition: "all 0.15s ease"
+                        }}
+                    >
+                        Create Account
                     </Link>
                 </div>
 
@@ -370,6 +418,7 @@ export function SignupPage({ onLogin }) {
 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
+    const [accountExists, setAccountExists] = useState(false);
     const [successMessage, setSuccessMessage] = useState("");
 
     // If already logged in, redirect straight to dashboard
@@ -381,10 +430,17 @@ export function SignupPage({ onLogin }) {
         }
     }, [navigate]);
 
+    useEffect(() => {
+        if (location.state?.initialEmail) {
+            setEmail(location.state.initialEmail);
+        }
+    }, [location.state]);
+
     const handleSubmit = async (event) => {
         event.preventDefault();
 
         setError("");
+        setAccountExists(false);
         setSuccessMessage("");
 
         const cleanName = name.trim();
@@ -425,7 +481,7 @@ export function SignupPage({ onLogin }) {
                     })
                 });
             } catch (regErr) {
-                if (regErr.data?.message?.includes("already exists")) {
+                if (regErr.data?.alreadyExists || regErr.data?.message?.includes("already exists")) {
                     throw regErr;
                 }
                 // Fallback to /create-account endpoint
@@ -439,7 +495,12 @@ export function SignupPage({ onLogin }) {
                 });
             }
 
-            setSuccessMessage(`Account created! Welcome, ${cleanName}. Redirecting to dashboard...`);
+            const displayName = data.user?.name || cleanName;
+            if (data.autoLoggedIn) {
+                setSuccessMessage(`Welcome back, ${displayName}! Logged in successfully. Redirecting...`);
+            } else {
+                setSuccessMessage(`Account created! Welcome, ${displayName}. Redirecting to dashboard...`);
+            }
 
             // Immediately store credentials & session token
             if (data.token) {
@@ -460,6 +521,9 @@ export function SignupPage({ onLogin }) {
 
         } catch (err) {
             setError(err.message || "Failed to create account. Please try again.");
+            if (err.data?.alreadyExists || err.message?.toLowerCase().includes("already exists")) {
+                setAccountExists(true);
+            }
         } finally {
             setLoading(false);
         }
@@ -478,6 +542,50 @@ export function SignupPage({ onLogin }) {
                         </div>
                         <p>Career Simulation Lab</p>
                     </Link>
+                </div>
+
+                {/* Clear Mode Switcher Tabs */}
+                <div style={{
+                    display: "grid",
+                    gridTemplateColumns: "1fr 1fr",
+                    background: "#f1f5f9",
+                    padding: 4,
+                    borderRadius: 12,
+                    marginBottom: 20,
+                    gap: 4
+                }}>
+                    <Link
+                        to="/login"
+                        state={{ initialEmail: email }}
+                        style={{
+                            textAlign: "center",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            textDecoration: "none",
+                            fontSize: 13,
+                            fontWeight: 600,
+                            background: "transparent",
+                            color: "#64748b",
+                            transition: "all 0.15s ease"
+                        }}
+                    >
+                        Sign In
+                    </Link>
+                    <div
+                        style={{
+                            textAlign: "center",
+                            padding: "9px 12px",
+                            borderRadius: 8,
+                            fontSize: 13,
+                            fontWeight: 700,
+                            background: "#ffffff",
+                            color: "#0f172a",
+                            boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                            cursor: "default"
+                        }}
+                    >
+                        Create Account
+                    </div>
                 </div>
 
                 <div className="auth-heading">
@@ -575,9 +683,39 @@ export function SignupPage({ onLogin }) {
                     </div>
 
                     {error && (
-                        <div className="auth-error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <AlertCircle size={16} style={{ flexShrink: 0 }} />
-                            <span>{error}</span>
+                        <div className="auth-error" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                                <span>{error}</span>
+                            </div>
+                            {accountExists && (
+                                <div style={{
+                                    marginTop: 4,
+                                    padding: "10px 12px",
+                                    background: "#eff6ff",
+                                    border: "1px solid #bfdbfe",
+                                    borderRadius: 8
+                                }}>
+                                    <div style={{ color: "#1e3a8a", fontSize: 13, marginBottom: 6, fontWeight: 500 }}>
+                                        An account with this email already exists on PathPilot.
+                                    </div>
+                                    <Link
+                                        to="/login"
+                                        state={{ initialEmail: email }}
+                                        style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            gap: 6,
+                                            color: "#2563eb",
+                                            fontWeight: 700,
+                                            fontSize: 13,
+                                            textDecoration: "none"
+                                        }}
+                                    >
+                                        <span>Click here to Sign In with your password →</span>
+                                    </Link>
+                                </div>
+                            )}
                         </div>
                     )}
 

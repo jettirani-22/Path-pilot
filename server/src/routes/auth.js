@@ -335,14 +335,37 @@ router.post("/register", authLimiter, async (req, res) => {
         }
 
         const existing = await queryOne(
-            "SELECT id FROM users WHERE email = ? LIMIT 1",
+            "SELECT id, name, email, role, password_hash, created_at FROM users WHERE email = ? LIMIT 1",
             [email]
         );
 
         if (existing) {
+            const isMatch = await bcrypt.compare(password, existing.password_hash);
+            if (isMatch) {
+                await execute(
+                    "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+                    [existing.id]
+                );
+                const token = generateToken(existing);
+                return res.status(200).json({
+                    success: true,
+                    autoLoggedIn: true,
+                    message: `Welcome back, ${existing.name}! Logged in successfully.`,
+                    token,
+                    user: {
+                        id: existing.id,
+                        name: existing.name,
+                        email: existing.email,
+                        role: existing.role,
+                        created_at: existing.created_at
+                    }
+                });
+            }
+
             return res.status(409).json({
                 success: false,
-                message: "An account with this email already exists. Please sign in instead."
+                alreadyExists: true,
+                message: "An account with this email already exists. Click 'Sign In' or check your password."
             });
         }
 
@@ -426,14 +449,37 @@ router.post("/create-account", authLimiter, async (req, res) => {
         }
 
         const existing = await queryOne(
-            "SELECT id FROM users WHERE email = ? LIMIT 1",
+            "SELECT id, name, email, role, password_hash, created_at FROM users WHERE email = ? LIMIT 1",
             [targetEmail]
         );
 
         if (existing) {
+            const isMatch = await bcrypt.compare(password, existing.password_hash);
+            if (isMatch) {
+                await execute(
+                    "UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?",
+                    [existing.id]
+                );
+                const token = generateToken(existing);
+                return res.status(200).json({
+                    success: true,
+                    autoLoggedIn: true,
+                    message: `Welcome back, ${existing.name}! Logged in successfully.`,
+                    token,
+                    user: {
+                        id: existing.id,
+                        name: existing.name,
+                        email: existing.email,
+                        role: existing.role,
+                        created_at: existing.created_at
+                    }
+                });
+            }
+
             return res.status(409).json({
                 success: false,
-                message: "An account with this email already exists."
+                alreadyExists: true,
+                message: "An account with this email already exists. Click 'Sign In' or check your password."
             });
         }
 
